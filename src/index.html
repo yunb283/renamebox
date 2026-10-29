@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RenameBox</title>
+    <style>
+      html,
+      body {
+        background: #101114;
+      }
+      html.light,
+      html.light body {
+        background: #eef0f4;
+      }
+    </style>
+    <script>
+      try {
+        if (localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light');
+      } catch (e) {}
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- 自绘标题栏：系统标题栏已关闭（decorations:false） -->
+    <div class="titlebar" data-tauri-drag-region="deep">
+      <img class="tb-icon" src="assets/app-icon.png" alt="" draggable="false" />
+      <span class="tb-title">RenameBox · 批量改名</span>
+      <span class="tb-hint" id="tb-hint" hidden></span>
+      <div class="tb-actions">
+        <button class="pin-btn" id="pin-top" data-tip="窗口置顶" aria-pressed="false" aria-label="窗口置顶">
+          <span class="ripple-clip" aria-hidden="true"></span>
+          <span class="pin-ic">
+            <svg class="ic-pin-line" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 17v5" />
+              <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+            </svg>
+            <svg class="ic-pin-solid" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="currentColor"
+              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+              <path d="M12 17v5" />
+              <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+            </svg>
+          </span>
+        </button>
+        <button class="cap-btn" id="win-min" aria-label="最小化" title="最小化">
+          <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1"
+            aria-hidden="true"><path d="M0 5h10" /></svg>
+        </button>
+        <button class="cap-btn" id="win-max" aria-label="最大化" title="最大化">
+          <svg class="ic-max" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1"
+            aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9" rx="1" /></svg>
+          <svg class="ic-restore" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1"
+            aria-hidden="true" hidden>
+            <path d="M2.5 2.5v-2h7v7h-2" />
+            <rect x="0.5" y="2.5" width="7" height="7" rx="1" />
+          </svg>
+        </button>
+        <button class="cap-btn cap-close" id="win-close" aria-label="关闭" title="关闭">
+          <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1"
+            aria-hidden="true"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" /></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <span class="tab-ind" id="tab-ind" aria-hidden="true"></span>
+      <span class="tab-hover" id="tab-hover" aria-hidden="true"></span>
+      <button class="tab active" data-tab="overall">整体<span class="dot"></span></button>
+      <button class="tab" data-tab="replace">替换<span class="dot"></span></button>
+      <button class="tab" data-tab="add">添加<span class="dot"></span></button>
+      <button class="tab" data-tab="remove">删除<span class="dot"></span></button>
+      <button class="tab" data-tab="seq">序号<span class="dot"></span></button>
+      <button class="tab" data-tab="template">模板<span class="dot"></span></button>
+      <button class="tab" data-tab="options">选项<span class="dot"></span></button>
+      <button class="theme-btn" id="theme-toggle" title="切换浅色 / 深色" aria-label="切换浅色或深色">
+        <span class="ic-wrap">
+          <svg class="ic-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+          <svg class="ic-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <div class="page">
+      <!-- 左：规则面板，一次显示一组 -->
+      <div class="panel rules">
+        <div class="panel-head">
+          <span class="panel-title" id="rule-title">整体</span>
+        </div>
+        <div class="rule-body">
+          <!-- 整体 -->
+          <section class="group" data-group="overall">
+            <div class="group-title">文件名</div>
+            <div class="radio-grid">
+              <label class="opt"><input type="radio" name="nameMode" value="keep" checked />保持不变</label>
+              <label class="opt"><input type="radio" name="nameMode" value="upper" />全部大写</label>
+              <label class="opt"><input type="radio" name="nameMode" value="lower" />全部小写</label>
+              <label class="opt"><input type="radio" name="nameMode" value="title" />首字母大写</label>
+              <label class="opt"><input type="radio" name="nameMode" value="random" />随机数</label>
+              <label class="opt"><input type="radio" name="nameMode" value="increase" />数字递增</label>
+            </div>
+            <div class="row" id="inc-row" hidden>
+              <label class="field"><span>递增起始</span>
+                <input type="number" id="incStart" value="1" min="0" step="1" />
+              </label>
+            </div>
+            <div class="group-title">文本转换</div>
+            <select id="convert">
+              <option value="none">不选择</option>
+              <option value="s2t">简体转繁体</option>
+              <option value="t2s">繁体转简体</option>
+              <option value="n2cn">一二三转123</option>
+              <option value="cn2n">123转一二三</option>
+              <option value="pinyin">汉语转拼音首字母</option>
+            </select>
+            <div class="group-title">扩展名</div>
+            <div class="radio-grid two">
+              <label class="opt"><input type="radio" name="extMode" value="keep" checked />保持不变</label>
+              <label class="opt"><input type="radio" name="extMode" value="upper" />全部大写</label>
+              <label class="opt"><input type="radio" name="extMode" value="lower" />全部小写</label>
+              <label class="opt"><input type="radio" name="extMode" value="del" />删除</label>
+              <label class="opt"><input type="radio" name="extMode" value="to" />改为</label>
+            </div>
+            <div class="row" id="ext-to-row" hidden>
+              <select id="extTo">
+                <option value="mp4">mp4</option>
+                <option value="pdf">pdf</option>
+                <option value="txt">txt</option>
+                <option value="jpg">jpg</option>
+                <option value="png">png</option>
+                <option value="zip">zip</option>
+                <option value="rar">rar</option>
+                <option value="7z">7z</option>
+                <option value="__custom">自定义…</option>
+              </select>
+              <input type="text" id="extToCustom" placeholder="不含点号" hidden />
+            </div>
+            <div class="help">
+              转换按「替换 → 删除 → 序号 → 模板 → 添加 → 大小写 → 文本转换 → 扩展名」的顺序叠加，各页开关互不影响。
+            </div>
+          </section>
+
+          <!-- 替换 -->
+          <section class="group" data-group="replace" hidden>
+            <label class="chk"><input type="checkbox" id="replaceOn" /><span>启用替换</span></label>
+            <label class="field"><span>查找</span><input type="text" id="replaceFind" placeholder="要替换的文字或正则" /></label>
+            <label class="field"><span>替换为</span><input type="text" id="replaceTo" placeholder="留空即删除该文字" /></label>
+            <div class="row">
+              <label class="opt"><input type="checkbox" id="replaceRegex" />正则表达式</label>
+              <label class="opt"><input type="checkbox" id="replaceCase" />区分大小写</label>
+            </div>
+            <div class="help">
+              正则下可用 <code>$1</code> 引用捕获组，如查找 <code>^(\d+)_</code> 替换为 <code>img$1-</code>。
+            </div>
+          </section>
+
+          <!-- 添加 -->
+          <section class="group" data-group="add" hidden>
+            <label class="chk"><input type="checkbox" id="addOn" /><span>启用添加</span></label>
+            <label class="field"><span>前缀</span><input type="text" id="addPrefix" /></label>
+            <label class="field"><span>后缀</span><input type="text" id="addSuffix" /></label>
+            <div class="group-title">添加位置</div>
+            <div class="radio-grid two">
+              <label class="opt"><input type="radio" name="addTarget" value="name" checked />文件名（扩展名前）</label>
+              <label class="opt"><input type="radio" name="addTarget" value="full" />整个文件名（含扩展名）</label>
+            </div>
+          </section>
+
+          <!-- 删除 -->
+          <section class="group" data-group="remove" hidden>
+            <label class="chk"><input type="checkbox" id="removeOn" /><span>启用删除</span></label>
+            <div class="radio-grid two">
+              <label class="opt"><input type="radio" name="removeMode" value="content" checked />按内容</label>
+              <label class="opt"><input type="radio" name="removeMode" value="position" />按位置</label>
+            </div>
+            <div id="remove-content">
+              <label class="field"><span>删除内容</span><input type="text" id="removeContent" /></label>
+              <div class="row">
+                <label class="opt"><input type="checkbox" id="removeRegex" />正则表达式</label>
+                <label class="opt"><input type="checkbox" id="removeCase" />区分大小写</label>
+              </div>
+            </div>
+            <div class="row" id="remove-position" hidden>
+              <label class="field"><span>从第</span><input type="number" id="posFrom" value="1" min="1" /></label>
+              <label class="field"><span>到第</span><input type="number" id="posTo" value="0" min="0" /></label>
+              <span class="help">位置按字符计，结束填 0 表示删到末尾</span>
+            </div>
+          </section>
+
+          <!-- 序号 -->
+          <section class="group" data-group="seq" hidden>
+            <label class="chk"><input type="checkbox" id="seqOn" /><span>启用序号</span></label>
+            <div class="row">
+              <label class="field"><span>起始</span><input type="number" id="seqStart" value="1" /></label>
+              <label class="field"><span>步长</span><input type="number" id="seqStep" value="1" /></label>
+              <label class="field"><span>位数</span><input type="number" id="seqDigits" value="2" min="0" max="9" /></label>
+            </div>
+            <div class="row">
+              <label class="field"><span>补位</span>
+                <select id="seqPad" style="width: 92px">
+                  <option value="0">前导 0</option>
+                  <option value="space">前导空格</option>
+                  <option value="none">不补位</option>
+                </select>
+              </label>
+              <label class="field"><span>分隔符</span><input type="text" id="seqSep" value="_" style="width: 56px" /></label>
+            </div>
+            <div class="group-title">序号位置</div>
+            <div class="radio-grid">
+              <label class="opt"><input type="radio" name="seqPos" value="before" checked />名称前</label>
+              <label class="opt"><input type="radio" name="seqPos" value="after" />名称后</label>
+              <label class="opt"><input type="radio" name="seqPos" value="template" />仅模板引用</label>
+            </div>
+          </section>
+
+          <!-- 模板 -->
+          <section class="group" data-group="template" hidden>
+            <label class="chk"><input type="checkbox" id="tplOn" /><span>启用模板（整名重建）</span></label>
+            <label class="field"><span>模板</span><input type="text" id="tplText" placeholder="{name}_{num}" /></label>
+            <div class="help">
+              可用变量：<code>{name}</code> 已处理的主名 · <code>{ext}</code> 扩展名 · <code>{num}</code> 序号 ·
+              <code>{index}</code> 行号 · <code>{date}</code> 日期 · <code>{time}</code> 时间 ·
+              <code>{parent}</code> 所在目录名 · <code>{rand}</code> 6 位随机数
+            </div>
+          </section>
+
+          <!-- 选项 -->
+          <section class="group" data-group="options" hidden>
+            <div class="group-title">过滤（只处理命中的行）</div>
+            <label class="field"><span>关键字</span><input type="text" id="filterKw" placeholder="留空不过滤" /></label>
+            <label class="field"><span>扩展名</span><input type="text" id="filterExt" placeholder="如 png, jpg" /></label>
+            <div class="group-title">导入</div>
+            <label class="chk"><input type="checkbox" id="importRecursive" /><span>导入文件夹时一并纳入子文件夹</span></label>
+            <div class="group-title">执行</div>
+            <label class="chk"><input type="checkbox" id="confirmExec" checked /><span>改名前弹出确认</span></label>
+            <label class="chk"><input type="checkbox" id="skipConflict" checked /><span>存在重名冲突时拒绝执行</span></label>
+            <div class="help">
+              撤销栈保存在内存中，关闭程序后清空；每次执行改名都会留下一条可撤销记录。
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- 右：文件列表，实时预览 -->
+      <div class="panel list">
+        <div class="panel-head">
+          <span class="panel-title" id="listTitle">文件列表</span>
+          <button class="btn tiny" id="btnSelectAll">全选</button>
+          <button class="btn tiny" id="btnInvert">反选</button>
+          <button class="btn tiny" id="btnImportFiles">导入文件</button>
+          <button class="btn tiny" id="btnImportDir">导入文件夹</button>
+          <button class="btn tiny" id="btnClear">清空</button>
+        </div>
+        <div class="table-wrap" id="tableWrap">
+          <table class="files">
+            <thead>
+              <tr>
+                <th class="col-chk"></th>
+                <th class="col-idx">序号</th>
+                <th>原文件名</th>
+                <th>新文件名</th>
+                <th class="col-status">状态</th>
+                <th class="col-ext">扩展名</th>
+                <th class="col-size">大小</th>
+                <th class="col-path">路径</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <div class="empty-hint" id="emptyHint">
+            <div>拖入文件或文件夹到这里，或用右上角「导入」按钮选择</div>
+            <div class="help">改名规则在左侧各页设置，所有启用的规则会同时叠加，新文件名实时预览</div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="status" id="status"></div>
+          <button class="btn" id="btnUndo" disabled>撤销</button>
+          <button class="btn primary" id="btnExec" disabled>执行改名</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="drop-scrim" id="dropScrim"><div class="box">松手导入文件</div></div>
+    <div class="toast" id="toast"></div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
