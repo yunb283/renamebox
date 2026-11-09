@@ -143,10 +143,18 @@ const radioVal = (name) => document.querySelector(`input[name="${name}"]:checked
 
 function collectRules() {
   const extToSel = $('extTo').value;
+  const incRaw = $('incStart').value.trim();
+  const numRaw = $('numStart').value.trim();
+  // 位数填 0 时，起始值本身写成 01 / 001 / 0001 就按它的宽度补位
+  const padWidth = (raw, digits) => (digits > 0 ? digits : /^0\d+$/.test(raw) ? raw.length : 0);
   return {
     overall: {
       nameMode: radioVal('nameMode') || 'keep',
-      incStart: parseInt($('incStart').value, 10) || 0,
+      incStart: parseInt(incRaw, 10) || 0,
+      incDigits: padWidth(incRaw, parseInt($('incDigits').value, 10) || 0),
+      numPrefix: $('numPrefix').value,
+      numStart: parseInt(numRaw, 10) || 0,
+      numDigits: padWidth(numRaw, parseInt($('numDigits').value, 10) || 0),
       convert: $('convert').value,
       extMode: radioVal('extMode') || 'keep',
       extTo: extToSel === '__custom' ? $('extToCustom').value : extToSel,
@@ -213,6 +221,10 @@ function syncRuleDots(rules) {
 function syncControls() {
   const nameMode = radioVal('nameMode');
   $('inc-row').hidden = nameMode !== 'increase';
+  $('prefix-row').hidden = nameMode !== 'prefixNum';
+  $('num-help').hidden = nameMode !== 'increase' && nameMode !== 'prefixNum';
+  for (const id of ['incStart', 'incDigits']) $(id).disabled = nameMode !== 'increase';
+  for (const id of ['numPrefix', 'numStart', 'numDigits']) $(id).disabled = nameMode !== 'prefixNum';
   $('ext-to-row').hidden = radioVal('extMode') !== 'to';
   $('extToCustom').hidden = $('extTo').value !== '__custom';
 
@@ -271,6 +283,8 @@ function addInfos(infos) {
       parentName: parentOf(dir),
       name: it.name,
       size: it.size,
+      mtime: it.mtime || 0,
+      ext: splitName(it.name).ext.toLowerCase(),
       checked: true,
       pass: true,
       newName: it.name,
@@ -318,6 +332,36 @@ async function importPaths(paths) {
   toast(n ? `拖入 ${n} 个文件${dirs.length ? `（含 ${dirs.length} 个文件夹的内容）` : ''}` : '没有可导入的文件');
 }
 
+// ---------- 排序 ----------
+
+const sortBy = $('sortBy');
+const sortDirBtn = $('sortDir');
+const nameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+let sortDesc = false;
+
+// 就地重排 entries，序号/递增都按排序后的顺序分配
+function sortEntries() {
+  const key = sortBy.value;
+  sortDirBtn.disabled = key === 'none';
+  sortDirBtn.textContent = sortDesc ? '↓' : '↑';
+  if (key === 'none') return;
+  const mul = sortDesc ? -1 : 1;
+  entries.sort((a, b) => {
+    let r = 0;
+    if (key === 'name') r = nameCollator.compare(a.name, b.name);
+    else if (key === 'mtime') r = a.mtime - b.mtime;
+    else if (key === 'type') r = nameCollator.compare(a.ext, b.ext) || nameCollator.compare(a.name, b.name);
+    else if (key === 'size') r = a.size - b.size;
+    return r * mul;
+  });
+}
+
+sortBy.addEventListener('change', () => recompute());
+sortDirBtn.addEventListener('click', () => {
+  sortDesc = !sortDesc;
+  recompute();
+});
+
 // ---------- 计算 + 渲染 ----------
 
 const tbody = $('tbody');
@@ -337,6 +381,7 @@ function recompute() {
   const rules = collectRules();
   syncControls();
   syncRuleDots(rules);
+  sortEntries();
 
   let visible = 0;
   for (const e of entries) {

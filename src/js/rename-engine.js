@@ -132,6 +132,13 @@ export function formatSeq(index, rule) {
   return '0'.repeat(pad) + s;
 }
 
+// 前导零补位：digits 为 0 时不补位，填 3 得到 001 / 002
+export function padNumber(n, digits) {
+  const s = String(n);
+  const pad = Math.max(0, (digits || 0) - s.length);
+  return pad ? '0'.repeat(pad) + s : s;
+}
+
 // ---------- 主流程 ----------
 
 // entry: { name, parentName }；index: 过滤后的可见行号
@@ -225,7 +232,8 @@ export function computeNewName(entry, index, rules) {
   else if (o.nameMode === 'lower') base = base.toLowerCase();
   else if (o.nameMode === 'title') base = base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
   else if (o.nameMode === 'random') base = String(Math.floor(Math.random() * 9000000) + 1000000);
-  else if (o.nameMode === 'increase') base = String(o.incStart + index);
+  else if (o.nameMode === 'increase') base = padNumber(o.incStart + index, o.incDigits);
+  else if (o.nameMode === 'prefixNum') base = (o.numPrefix || '') + padNumber(o.numStart + index, o.numDigits);
 
   // 7. 文本转换
   if (o.convert !== 'none') base = convertText(base, o.convert);

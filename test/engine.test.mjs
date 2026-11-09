@@ -70,5 +70,9 @@ t('filter keyword', passesFilter({ name: 'IMG_1.png' }, { keyword: 'img', exts: 
 t('filter ext miss', passesFilter({ name: 'a.txt' }, { keyword: '', exts: 'png,jpg' }), false);
 t('filter ext hit', passesFilter({ name: 'a.PNG' }, { keyword: '', exts: 'png' }), true);
 
+t('increase pad', name('a.png', R({ overall: { ...base.overall, nameMode: 'increase', incStart: 1, incDigits: 3 } }), 0), '001.png');
+t('increase no pad', name('a.png', R({ overall: { ...base.overall, nameMode: 'increase', incStart: 1, incDigits: 0 } }), 9), '10.png');
+t('prefix num', name('a.png', R({ overall: { ...base.overall, nameMode: 'prefixNum', numPrefix: 'IMG_', numStart: 1, numDigits: 3 } }), 1), 'IMG_002.png');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

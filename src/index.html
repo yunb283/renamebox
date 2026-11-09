@@ -19,6 +19,7 @@
         if (localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light');
       } catch (e) {}
     </script>
+    <link rel="icon" type="image/png" href="assets/app-icon.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -105,12 +106,28 @@
               <label class="opt"><input type="radio" name="nameMode" value="title" />首字母大写</label>
               <label class="opt"><input type="radio" name="nameMode" value="random" />随机数</label>
               <label class="opt"><input type="radio" name="nameMode" value="increase" />数字递增</label>
+              <label class="opt"><input type="radio" name="nameMode" value="prefixNum" />前缀+数字</label>
             </div>
             <div class="row" id="inc-row" hidden>
               <label class="field"><span>递增起始</span>
                 <input type="number" id="incStart" value="1" min="0" step="1" />
               </label>
+              <label class="field"><span>位数</span>
+                <input type="number" id="incDigits" value="0" min="0" max="9" />
+              </label>
             </div>
+            <div class="row" id="prefix-row" hidden>
+              <label class="field"><span>前缀</span>
+                <input type="text" id="numPrefix" placeholder="如 IMG_" />
+              </label>
+              <label class="field"><span>起始</span>
+                <input type="number" id="numStart" value="1" min="0" step="1" />
+              </label>
+              <label class="field"><span>位数</span>
+                <input type="number" id="numDigits" value="3" min="0" max="9" />
+              </label>
+            </div>
+            <div class="help" id="num-help" hidden>位数 0 表示不补位；填 3 得到 001、002…</div>
             <div class="group-title">文本转换</div>
             <select id="convert">
               <option value="none">不选择</option>
@@ -252,6 +269,16 @@
       <div class="panel list">
         <div class="panel-head">
           <span class="panel-title" id="listTitle">文件列表</span>
+          <label class="sort-ctl"><span>排序</span>
+            <select id="sortBy" title="排序方式">
+              <option value="none">默认</option>
+              <option value="name">名称</option>
+              <option value="mtime">日期</option>
+              <option value="type">类型</option>
+              <option value="size">大小</option>
+            </select>
+          </label>
+          <button class="btn tiny sort-dir" id="sortDir" title="升序 / 降序" disabled>↑</button>
           <button class="btn tiny" id="btnSelectAll">全选</button>
           <button class="btn tiny" id="btnInvert">反选</button>
           <button class="btn tiny" id="btnImportFiles">导入文件</button>
