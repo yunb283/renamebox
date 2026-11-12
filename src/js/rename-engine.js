@@ -157,12 +157,14 @@ export function computeNewName(entry, index, rules) {
     try {
       const re = new RegExp(rp.useRegex ? rp.find : escapeRe(rp.find), 'g' + (rp.caseSensitive ? '' : 'i'));
       const to = rp.useRegex ? rp.to : rp.to.replaceAll('$', '$$');
-      base = base.replace(re, to);
-      ext = ext.replace(re, to);
+      if (rp.target !== 'ext') base = base.replace(re, to);
+      if (rp.target !== 'name') ext = ext.replace(re, to);
     } catch (e) {
       warnings.push('替换正则非法');
     }
   }
+
+  if (warnings.length) return { newName: entry.name, status: 'illegal', warnings };
 
   // 2. 删除
   const rm = rules.remove;
@@ -182,6 +184,8 @@ export function computeNewName(entry, index, rules) {
     }
   }
 
+  if (warnings.length) return { newName: entry.name, status: 'illegal', warnings };
+
   // 3. 序号（先算出来，模板和名称插入都用它）
   const sq = rules.seq;
   let seq = '';
@@ -197,8 +201,10 @@ export function computeNewName(entry, index, rules) {
   // 4. 模板：整名结构，{name} 用前面各步处理过的名称
   const tp = rules.template;
   if (tp.enabled && tp.text) {
-    const d = new Date();
+    const md = entry.mtime ? new Date(entry.mtime * 1000) : null;
+    const d = md || new Date();
     const pad2 = (x) => String(x).padStart(2, '0');
+    const sizeKB = entry.size != null ? (entry.size / 1024).toFixed(entry.size < 1024 ? 0 : 1) : '0';
     const ctx = {
       name: base,
       ext,
@@ -206,8 +212,11 @@ export function computeNewName(entry, index, rules) {
       index: String(index + 1),
       date: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
       time: `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`,
+      mtime: String(entry.mtime || 0),
       parent: entry.parentName || '',
-      rand: String(Math.floor(Math.random() * 900000) + 100000),
+      size: String(entry.size || 0),
+      sizeKB,
+      rand: String(entry.random6 ?? Math.floor(Math.random() * 900000) + 100000),
     };
     const filled = tp.text.replace(/\{(\w+)\}/g, (m, k) => (k in ctx ? ctx[k] : m));
     const sp = splitName(filled);
@@ -231,7 +240,7 @@ export function computeNewName(entry, index, rules) {
   if (o.nameMode === 'upper') base = base.toUpperCase();
   else if (o.nameMode === 'lower') base = base.toLowerCase();
   else if (o.nameMode === 'title') base = base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
-  else if (o.nameMode === 'random') base = String(Math.floor(Math.random() * 9000000) + 1000000);
+  else if (o.nameMode === 'random') base = String(entry.random7 ?? Math.floor(Math.random() * 9000000) + 1000000);
   else if (o.nameMode === 'increase') base = padNumber(o.incStart + index, o.incDigits);
   else if (o.nameMode === 'prefixNum') base = (o.numPrefix || '') + padNumber(o.numStart + index, o.numDigits);
 
@@ -251,6 +260,10 @@ export function computeNewName(entry, index, rules) {
   if (!base.trim() && !pre && !suf) return { newName: entry.name, status: 'empty', warnings };
   if (!newName) return { newName: entry.name, status: 'empty', warnings };
   if (ILLEGAL.test(joined)) warnings.push('含非法字符，已自动剔除');
+  if (/[. ]$/.test(newName) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(newName) || /[\x00-\x1f]/.test(newName)) {
+    warnings.push('Windows 不支持此文件名');
+    return { newName, status: 'illegal', warnings };
+  }
   if (newName === entry.name) return { newName, status: 'same', warnings };
   return { newName, status: 'ok', warnings };
 }

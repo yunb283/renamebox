@@ -136,6 +136,206 @@ requestAnimationFrame(() => {
   tabsRow.classList.add('ready');
 });
 
+// ---------- 自定义 Select（替换原生 <select>） ----------
+// 保留原 <select> 隐藏，用自定义按钮+菜单，点击后只改原 select.value 并派 change。
+// 任何外部代码读 .value / 写 .value 都保持兼容。
+(function initCustomSelects() {
+  const originalSelects = []; // [ { native, sel } ]
+
+  function labelOf(opt) {
+    return opt.textContent.trim();
+  }
+
+  function syncLabel(native, sel) {
+    const btn = sel.querySelector('.sel-btn');
+    const cur = native.options[native.selectedIndex];
+    btn.textContent = cur ? labelOf(cur) : '';
+  }
+
+  function closeAll() {
+    originalSelects.forEach(({ sel }) => sel.classList.remove('open'));
+  }
+
+  document.querySelectorAll('select').forEach((native) => {
+    const sel = document.createElement('div');
+    sel.className = 'sel';
+    // 从原生 select 的 title 继承提示
+    if (native.title) sel.setAttribute('title', native.title);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sel-btn';
+    btn.setAttribute('tabindex', native.getAttribute('tabindex') || '0');
+
+    const menu = document.createElement('div');
+    menu.className = 'sel-menu';
+    native.querySelectorAll('option').forEach((opt) => {
+      const item = document.createElement('div');
+      item.className = 'sel-item';
+      item.dataset.value = opt.value;
+      item.textContent = labelOf(opt);
+      item.addEventListener('click', () => {
+        native.value = opt.value;
+        native.dispatchEvent(new Event('change', { bubbles: true }));
+        closeAll();
+        syncLabel(native, sel);
+      });
+      menu.appendChild(item);
+    });
+
+    sel.appendChild(btn);
+    sel.appendChild(menu);
+
+    // 原 select 的 .value 外部可能被脚本改，用 observer 同步按钮文字
+    const desc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    if (desc && !native.__valuePatched) {
+      native.__valuePatched = true;
+      Object.defineProperty(native, 'value', {
+        configurable: true,
+        enumerable: true,
+        get() { return desc.get.call(this); },
+        set(v) {
+          desc.set.call(this, v);
+          syncLabel(this, sel);
+        },
+      });
+    }
+    native.addEventListener('change', () => syncLabel(native, sel));
+
+    // 放原 select 后面（原 select 留在 DOM 但隐藏，现有 .style.width 设置仍继承）
+    native.style.display = 'none';
+    native.after(sel);
+    // 同步 sel-btn 宽度（让原 select 上的 inline width 样式生效到外观）
+    const w = native.style.width;
+    if (w) sel.style.width = w;
+
+    syncLabel(native, sel);
+    originalSelects.push({ native, sel });
+
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const isOpen = sel.classList.contains('open');
+      closeAll();
+      if (!isOpen) sel.classList.add('open');
+    });
+  });
+
+  // 点空白 / Esc 关闭
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('.sel')) closeAll();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') closeAll();
+  });
+
+  // 暴露给外部手动刷新菜单项（preset 列表增删时需要）
+  window.__rbRefreshCustomSelect = function (nativeId) {
+    const entry = originalSelects.find(({ native }) => native.id === nativeId);
+    if (!entry) return;
+    const { native, sel } = entry;
+    const menu = sel.querySelector('.sel-menu');
+    menu.innerHTML = '';
+    native.querySelectorAll('option').forEach((opt) => {
+      const item = document.createElement('div');
+      item.className = 'sel-item';
+      item.dataset.value = opt.value;
+      item.textContent = labelOf(opt);
+      item.addEventListener('click', () => {
+        native.value = opt.value;
+        native.dispatchEvent(new Event('change', { bubbles: true }));
+        closeAll();
+        syncLabel(native, sel);
+      });
+      menu.appendChild(item);
+    });
+    syncLabel(native, sel);
+  };
+})();
+
+// ---------- 模态 Prompt 组件 ----------
+// window.prompt 的替代品：返回 Promise<string | null>
+function rbPrompt(title, message, placeholder = '', defaultValue = '') {
+  return new Promise((resolve) => {
+    const scrim = $('modalScrim');
+    $('modalTitle').textContent = title;
+    const textEl = $('modalText');
+    const input = $('modalInput');
+    const cancel = $('modalCancel');
+    if (message) {
+      textEl.hidden = false;
+      textEl.textContent = message;
+    } else {
+      textEl.hidden = true;
+    }
+    if (placeholder !== '' || defaultValue !== '') {
+      input.hidden = false;
+      input.value = defaultValue;
+      input.placeholder = placeholder;
+      input.focus();
+      input.select();
+    } else {
+      input.hidden = true;
+    }
+    cancel.hidden = false;
+    scrim.hidden = false;
+
+    const cleanup = () => {
+      scrim.hidden = true;
+      input.hidden = true;
+      textEl.hidden = true;
+      cancel.hidden = true;
+      input.onkeydown = null;
+      $('modalOk').onclick = null;
+      cancel.onclick = null;
+      scrim.onclick = null;
+    };
+
+    const submit = () => {
+      const val = input.hidden ? '' : input.value.trim();
+      cleanup();
+      resolve(val);
+    };
+    const cancel_ = () => { cleanup(); resolve(null); };
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel_(); }
+    };
+    $('modalOk').onclick = submit;
+    cancel.onclick = cancel_;
+    scrim.onclick = (e) => { if (e.target === scrim) cancel_(); };
+  });
+}
+
+// ---------- 全局快捷键拦截 ----------
+(function blockShortcuts() {
+  const NON_EDITABLE = /^(INPUT|TEXTAREA)$/;
+  // 这些 keyCode / key 值一律拦
+  const BLOCK_ALL = new Set([
+    'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+  ]);
+  function onKey(e) {
+    const tag = (e.target && e.target.tagName) || '';
+    const isEditing = NON_EDITABLE.test(tag) && !e.target.readOnly;
+    // Tab 全局拦截 —— 不允许焦点跳出我们设计的路径
+    if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); return; }
+    if (BLOCK_ALL.has(e.key)) { e.preventDefault(); e.stopPropagation(); return; }
+    // 带 Ctrl/Meta 的浏览器级快捷键（输入框里也不应触发浏览器操作）
+    if (e.ctrlKey || e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (['a','c','v','x','z','y','f','g','h','j','l','n','o','p','r','s','t','w','+','-','=','0'].includes(k)) {
+        // A/C/V/X/Z/Y 在输入框里放行（正常编辑）
+        if (isEditing && ['a','c','v','x','z','y'].includes(k)) return;
+        e.preventDefault(); e.stopPropagation();
+        return;
+      }
+    }
+    // Alt 相关菜单
+    if (e.altKey) { e.preventDefault(); e.stopPropagation(); }
+  }
+  document.addEventListener('keydown', onKey, true);
+})();
+
 // ---------- 规则状态 ----------
 
 const $ = (id) => document.getElementById(id);
@@ -165,6 +365,7 @@ function collectRules() {
       to: $('replaceTo').value,
       useRegex: $('replaceRegex').checked,
       caseSensitive: $('replaceCase').checked,
+      target: radioVal('replaceTarget') || 'both',
     },
     remove: {
       enabled: $('removeOn').checked,
@@ -201,6 +402,81 @@ function collectRules() {
     confirmExec: $('confirmExec').checked,
     skipConflict: $('skipConflict').checked,
   };
+}
+
+// 反向：把 rules 对象写回 DOM（应用一个预设）
+function applyRules(rules) {
+  if (!rules) return;
+  const r = rules.overall || {};
+  const elSet = (sel, val) => { const el = $(sel); if (el) el.value = val; };
+  const chk = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
+  const radioSet = (name, val) => {
+    document.querySelectorAll(`input[name="${name}"]`).forEach((rb) => {
+      rb.checked = rb.value === val;
+    });
+  };
+  // overall
+  radioSet('nameMode', r.nameMode || 'keep');
+  elSet('incStart', r.incStart ?? 1);
+  elSet('incDigits', r.incDigits ?? 0);
+  elSet('numPrefix', r.numPrefix ?? '');
+  elSet('numStart', r.numStart ?? 1);
+  elSet('numDigits', r.numDigits ?? 0);
+  elSet('convert', r.convert || 'none');
+  radioSet('extMode', r.extMode || 'keep');
+  // extTo 下拉里没有的选项走自定义
+  const knownExts = ['mp4', 'pdf', 'txt', 'jpg', 'png', 'zip', 'rar', '7z'];
+  if (r.extTo && !knownExts.includes(r.extTo)) {
+    elSet('extTo', '__custom');
+    elSet('extToCustom', r.extTo);
+  } else {
+    elSet('extTo', r.extTo || 'mp4');
+    elSet('extToCustom', '');
+  }
+  // replace
+  const rp = rules.replace || {};
+  chk('replaceOn', rp.enabled);
+  elSet('replaceFind', rp.find || '');
+  elSet('replaceTo', rp.to || '');
+  chk('replaceRegex', rp.useRegex);
+  chk('replaceCase', rp.caseSensitive);
+  radioSet('replaceTarget', rp.target || 'both');
+  // remove
+  const rm = rules.remove || {};
+  chk('removeOn', rm.enabled);
+  radioSet('removeMode', rm.mode || 'content');
+  elSet('removeContent', rm.content || '');
+  chk('removeRegex', rm.useRegex);
+  chk('removeCase', rm.caseSensitive);
+  elSet('posFrom', rm.posFrom ?? 1);
+  elSet('posTo', rm.posTo ?? 0);
+  // add
+  const ad = rules.add || {};
+  chk('addOn', ad.enabled);
+  elSet('addPrefix', ad.prefix || '');
+  elSet('addSuffix', ad.suffix || '');
+  radioSet('addTarget', ad.target || 'name');
+  // seq
+  const sq = rules.seq || {};
+  chk('seqOn', sq.enabled);
+  elSet('seqStart', sq.start ?? 1);
+  elSet('seqStep', sq.step ?? 1);
+  elSet('seqDigits', sq.digits ?? 2);
+  elSet('seqPad', sq.padChar || '0');
+  radioSet('seqPos', sq.position || 'before');
+  elSet('seqSep', sq.sep ?? '_');
+  // template
+  const tp = rules.template || {};
+  chk('tplOn', tp.enabled);
+  elSet('tplText', tp.text || '');
+  // filter + options
+  const fl = rules.filter || {};
+  elSet('filterKw', fl.keyword || '');
+  elSet('filterExt', fl.exts || '');
+  // options 项（顶层）
+  chk('importRecursive', rules.importRecursive);
+  chk('confirmExec', rules.confirmExec !== false);
+  chk('skipConflict', rules.skipConflict !== false);
 }
 
 // 有生效规则的页签点亮小圆点
@@ -245,6 +521,7 @@ function syncControls() {
 
 let entries = [];
 const undoStack = [];
+const redoStack = [];
 const prevNames = new Map(); // path -> 上次预览的新名，用于只给真正变化的行加闪烁
 
 function dirOf(path) {
@@ -274,7 +551,7 @@ function esc(s) {
 function addInfos(infos) {
   let added = 0;
   for (const it of infos) {
-    if (it.is_dir) continue;
+    // 文件和文件夹都进入列表，文件夹在 status 列会显示 tag
     if (entries.some((e) => e.path.toLowerCase() === it.path.toLowerCase())) continue;
     const dir = dirOf(it.path);
     entries.push({
@@ -285,12 +562,15 @@ function addInfos(infos) {
       size: it.size,
       mtime: it.mtime || 0,
       ext: splitName(it.name).ext.toLowerCase(),
+      isDir: !!it.is_dir,
       checked: true,
       pass: true,
       newName: it.name,
       status: 'same',
       conflict: false,
       warnings: [],
+      random6: Math.floor(Math.random() * 900000) + 100000,
+      random7: Math.floor(Math.random() * 9000000) + 1000000,
     });
     added++;
   }
@@ -404,7 +684,7 @@ function recompute() {
   const wanted = new Map();
   const occupied = new Set();
   for (const e of entries) {
-    const stays = !e.pass || !e.checked || e.status === 'same' || e.status === 'empty';
+    const stays = !e.pass || !e.checked || e.status !== 'ok';
     if (stays) {
       occupied.add(keyOf(e.dir, e.name));
       continue;
@@ -420,6 +700,19 @@ function recompute() {
     const k = keyOf(e.dir, e.newName);
     e.conflict = (wanted.get(k) || 0) > 1 || occupied.has(k);
   }
+
+  // 跳过冲突行时，其原名仍被占用；逐层传播，避免其余操作撞上这些文件。
+  let changed;
+  do {
+    changed = false;
+    for (const e of entries) if (e.conflict) occupied.add(keyOf(e.dir, e.name));
+    for (const e of entries) {
+      if (e.pass && e.checked && e.status === 'ok' && !e.conflict && occupied.has(keyOf(e.dir, e.newName))) {
+        e.conflict = true;
+        changed = true;
+      }
+    }
+  } while (changed);
 
   view.conflicts = entries.filter((e) => e.conflict).length;
   view.okCount = entries.filter((e) => e.pass && e.checked && e.status === 'ok' && !e.conflict).length;
@@ -444,11 +737,19 @@ function render() {
     const changed = prev !== undefined && prev !== e.newName;
     prevNames.set(e.path, e.newName);
 
-    let tag;
-    if (!e.pass) tag = '<span class="tag same">已过滤</span>';
+  let tag;
+    if (e.isDir) tag = '<span class="tag folder">文件夹</span>' + (
+      !e.pass ? '<span class="tag same">已过滤</span>' :
+      !e.checked ? '<span class="tag same">未选择</span>' :
+      e.status === 'empty' || e.status === 'illegal' ? `<span class="tag bad" title="${esc(e.warnings.join('、'))}">名称或规则无效</span>` :
+      e.conflict ? '<span class="tag bad">重名冲突</span>' :
+      e.status === 'same' ? '<span class="tag same">未变化</span>' :
+      '<span class="tag rename">待改名</span>'
+    );
+    else if (!e.pass) tag = '<span class="tag same">已过滤</span>';
     else if (!e.checked) tag = '<span class="tag same">未选择</span>';
     else if (e.status === 'empty') tag = '<span class="tag bad">名称为空</span>';
-    else if (e.status === 'illegal') tag = '<span class="tag warn">含非法字符</span>';
+    else if (e.status === 'illegal') tag = `<span class="tag bad" title="${esc(e.warnings.join('、'))}">名称或规则无效</span>`;
     else if (e.conflict) tag = '<span class="tag bad">重名冲突</span>';
     else if (e.status === 'same') tag = '<span class="tag same">未变化</span>';
     else tag = '<span class="tag rename">待改名</span>';
@@ -462,7 +763,7 @@ function render() {
         `<td class="col-chk"><input type="checkbox" ${e.checked ? 'checked' : ''} ${e.pass ? '' : 'disabled'} /></td>` +
         `<td class="col-idx">${i + 1}</td>` +
         `<td class="old-name">${esc(e.name)}</td>` +
-        `<td class="new-name ${e.status === 'ok' && !e.conflict ? '' : 'unchanged'}${changed ? ' flash' : ''}">${esc(e.newName)}</td>` +
+        `<td title="${esc(e.warnings.join('、'))}" class="new-name ${e.status === 'ok' && !e.conflict ? '' : 'unchanged'}${changed ? ' flash' : ''}">${esc(e.newName)}</td>` +
         `<td class="col-status">${tag}</td>` +
         `<td class="col-ext">${esc(splitName(e.newName).ext)}</td>` +
         `<td class="col-size">${sizeText(e.size)}</td>` +
@@ -483,6 +784,8 @@ function render() {
   btnExec.disabled = busy || view.okCount === 0 || view.blocked;
   btnUndo.disabled = busy || undoStack.length === 0;
   btnUndo.textContent = undoStack.length ? `撤销(${undoStack.length})` : '撤销';
+  btnRedo.disabled = busy || redoStack.length === 0;
+  btnRedo.textContent = redoStack.length ? `重做(${redoStack.length})` : '重做';
 }
 
 // ---------- 交互 ----------
@@ -566,7 +869,9 @@ btnExec.addEventListener('click', async () => {
       e.status = 'same';
       e.conflict = false;
     }
-    undoStack.push(reverse);
+    undoStack.push({ reverse, forward: ops });
+    redoStack.length = 0;
+    persistUndo();
     toast(`已重命名 ${reverse.length} 个文件`);
   } catch (err) {
     toast(String(err), true);
@@ -575,22 +880,57 @@ btnExec.addEventListener('click', async () => {
 });
 
 btnUndo.addEventListener('click', async () => {
-  const last = undoStack.pop();
-  if (!last) return;
+  const item = undoStack.pop();
+  if (!item) return;
+  busy = true;
+  render();
   try {
-    await invoke('restore_batch', { ops: last });
-    // 逆操作：old 是改名后的路径，new 是原路径
-    const byCur = new Map(last.map((o) => [o.old.toLowerCase(), o.new]));
+    await invoke('restore_batch', { ops: item.reverse });
+    // 逆操作：reverse 里 old 是改名后的路径，new 是原路径
+    const byCur = new Map(item.reverse.map((o) => [o.old.toLowerCase(), o.new]));
     for (const e of entries) {
       const back = byCur.get(e.path.toLowerCase());
       if (!back) continue;
       e.path = back;
       e.name = back.slice(Math.max(back.lastIndexOf('\\'), back.lastIndexOf('/')) + 1);
     }
+    redoStack.push(item);
     toast('已撤销上一批改名');
   } catch (err) {
     toast(String(err), true);
+  } finally {
+    busy = false;
   }
+  persistUndo();
+  recompute();
+});
+
+btnRedo.addEventListener('click', async () => {
+  const item = redoStack.pop();
+  if (!item) return;
+  busy = true;
+  render();
+  try {
+    await invoke('restore_batch', { ops: item.forward });
+    // 正向 ops：old → new，内存条目跟着同步
+    const byOld = new Map(item.forward.map((o) => [o.old.toLowerCase(), { new: o.new, name: o.new.slice(Math.max(o.new.lastIndexOf('\\'), o.new.lastIndexOf('/')) + 1) }]));
+    for (const e of entries) {
+      const hit = byOld.get(e.path.toLowerCase());
+      if (!hit) continue;
+      e.path = hit.new;
+      e.name = hit.name;
+      e.newName = hit.name;
+      e.status = 'same';
+      e.conflict = false;
+    }
+    undoStack.push(item);
+    toast('已重做');
+  } catch (err) {
+    toast(String(err), true);
+  } finally {
+    busy = false;
+  }
+  persistUndo();
   recompute();
 });
 
@@ -620,7 +960,141 @@ if (currentWindow) {
 
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
+// ---------- 持久化：规则预设 + 撤销/重做 ----------
+
+const LS = {
+  presets: 'rb.presets.v1',          // { name: rules, ... }
+  current: 'rb.currentRules.v1',    // 关闭时自动保存的当前规则
+  active: 'rb.activePreset.v1',
+  undo: 'rb.undo.v1',
+  redo: 'rb.redo.v1',
+};
+const MAX_UNDO = 20;
+
+function safeLS(key, val) {
+  try {
+    if (val === undefined) return localStorage.getItem(key);
+    if (val === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, val);
+  } catch { /* 配额满 / 隐私模式 —— 静默忽略 */ }
+}
+function loadJSON(key, fallback) {
+  const raw = safeLS(key);
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+function persistUndo() {
+  safeLS(LS.undo, JSON.stringify(undoStack.slice(-MAX_UNDO)));
+  safeLS(LS.redo, JSON.stringify(redoStack.slice(-MAX_UNDO)));
+}
+
+// 每次规则变更自动把当前值存一份，下次打开直接恢复
+function persistCurrentRules() {
+  safeLS(LS.current, JSON.stringify(collectRules()));
+}
+
+function loadPresets() {
+  return loadJSON(LS.presets, {});
+}
+function savePresets(map) {
+  safeLS(LS.presets, JSON.stringify(map));
+}
+
+// 刷新预设下拉：value 是 name
+function refreshPresetUI() {
+  const map = loadPresets();
+  const names = Object.keys(map).sort();
+  const sel = $('presetList');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— 当前 —</option>' +
+    names.map((n) => `<option value="${n}">${esc(n)}</option>`).join('');
+  if (cur && cur in map) sel.value = cur;
+  const active = safeLS(LS.active);
+  if (!cur && active && active in map) sel.value = active;
+  // 同步自定义下拉的菜单项
+  window.__rbRefreshCustomSelect?.('presetList');
+  $('presetDelete').disabled = !sel.value;
+}
+
+$('presetList').addEventListener('change', () => {
+  const name = $('presetList').value;
+  if (!name) {
+    safeLS(LS.active, '');
+    return;
+  }
+  const map = loadPresets();
+  if (map[name]) {
+    applyRules(map[name]);
+    safeLS(LS.active, name);
+    recompute();
+  }
+  $('presetDelete').disabled = false;
+});
+
+$('presetSave').addEventListener('click', () => {
+  const name = $('presetList').value;
+  if (!name) return toast('请先选一个预设名，或点「另存为…」', true);
+  const map = loadPresets();
+  map[name] = collectRules();
+  savePresets(map);
+  safeLS(LS.active, name);
+  refreshPresetUI();
+  toast(`已保存预设「${name}」`);
+});
+
+$('presetSaveAs').addEventListener('click', async () => {
+  const name = await rbPrompt('保存为新预设', '', '预设名');
+  if (name === null) return;
+  const trim = name.trim();
+  if (!trim) return toast('预设名不能为空', true);
+  const map = loadPresets();
+  map[trim] = collectRules();
+  savePresets(map);
+  safeLS(LS.active, trim);
+  refreshPresetUI();
+  $('presetList').value = trim;
+  window.__rbRefreshCustomSelect?.('presetList');
+  toast(`已保存预设「${trim}」`);
+});
+
+$('presetDelete').addEventListener('click', () => {
+  const name = $('presetList').value;
+  if (!name) return;
+  const map = loadPresets();
+  delete map[name];
+  savePresets(map);
+  safeLS(LS.active, '');
+  refreshPresetUI();
+  toast(`已删除预设「${name}」`);
+});
+
+// 规则变更时写入「当前」快照；预设另存是显式动作
+rulePanel.addEventListener('input', persistCurrentRules);
+rulePanel.addEventListener('change', persistCurrentRules);
+
+// 打开时：恢复上次的规则（如果上次是某个预设，也同步选中）
+(function restoreSession() {
+  // 1. 撤销/重做栈
+  try {
+    const u = loadJSON(LS.undo, []);
+    const r = loadJSON(LS.redo, []);
+    if (Array.isArray(u)) undoStack.push(...u);
+    if (Array.isArray(r)) redoStack.push(...r);
+  } catch { /* 版本不匹配就放弃 */ }
+
+  // 2. 预设
+  refreshPresetUI();
+
+  // 3. 上次关闭时的当前规则
+  const current = loadJSON(LS.current, null);
+  if (current) {
+    try { applyRules(current); } catch { /* 旧版本存储格式变化时忽略 */ }
+  }
+})();
+
 // 初始：让控件禁用态与圆点先就位
 syncControls();
 showTab('overall');
 recompute();
+persistCurrentRules();

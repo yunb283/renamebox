@@ -74,5 +74,27 @@ t('increase pad', name('a.png', R({ overall: { ...base.overall, nameMode: 'incre
 t('increase no pad', name('a.png', R({ overall: { ...base.overall, nameMode: 'increase', incStart: 1, incDigits: 0 } }), 9), '10.png');
 t('prefix num', name('a.png', R({ overall: { ...base.overall, nameMode: 'prefixNum', numPrefix: 'IMG_', numStart: 1, numDigits: 3 } }), 1), 'IMG_002.png');
 
+// 模板：mtime / size / sizeKB 走文件元数据
+const md1 = computeNewName({ name: 'a.png', parentName: 'dir', mtime: 1700000000, size: 1024 }, 0,
+  R({ template: { enabled: true, text: '{mtime}_{size}b.{ext}' } })).newName;
+t('template metadata mtime/size', md1, '1700000000_1024b.png');
+
+// sizeKB 字段
+const md2 = computeNewName({ name: 'a.png', size: 2048 }, 0,
+  R({ template: { enabled: true, text: '{sizeKB}' } })).newName;
+t('template sizeKB', md2, '2.0');
+
+t('replace name only', name('txt.txt', R({ replace: { enabled: true, find: 'txt', to: 'md', target: 'name' } })), 'md.txt');
+t('replace extension only', name('txt.txt', R({ replace: { enabled: true, find: 'txt', to: 'md', target: 'ext' } })), 'txt.md');
+
+// 不合法规则不能被静默跳过，随机预览在同一条目上保持稳定。
+const badRegex = R({ replace: { enabled: true, find: '[', to: '', useRegex: true, caseSensitive: false }, add: { enabled: true, prefix: 'x', suffix: '', target: 'name' } });
+t('invalid regex blocks row', computeNewName({ name: 'a.txt' }, 0, badRegex).status, 'illegal');
+t('reserved Windows name', computeNewName({ name: 'a.txt' }, 0, R({ template: { enabled: true, text: 'CON.txt' } })).status, 'illegal');
+t('trailing dot invalid', computeNewName({ name: 'a.txt' }, 0, R({ add: { enabled: true, prefix: '', suffix: '.', target: 'full' } })).status, 'illegal');
+const randomRules = R({ template: { enabled: true, text: '{rand}' } });
+t('stable random token', computeNewName({ name: 'a.txt', random6: 123456 }, 0, randomRules).newName, '123456.txt');
+t('literal regex metacharacters', name('a[b].txt', R({ replace: { enabled: true, find: '[b]', to: 'x', useRegex: false, caseSensitive: true } })), 'ax.txt');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

@@ -164,6 +164,15 @@ fn apply_ops(ops: &[RenameOp]) -> Result<(), String> {
         moves.iter().any(|p| !std::ptr::eq(*p, *o) && p.old.to_lowercase() == key)
     });
 
+    // 文件夹支持：父子目录同时改名时，先动子项再动父目录，避免父目录先改名后子项的 old 路径消失
+    let mut moves_sorted: Vec<&RenameOp> = moves.clone();
+    moves_sorted.sort_by(|a, b| {
+        let ad = a.old.matches('/').count() + a.old.matches('\\').count();
+        let bd = b.old.matches('/').count() + b.old.matches('\\').count();
+        bd.cmp(&ad)
+    });
+    let moves = moves_sorted;
+
     // (当前位置, 原始位置)，出错时按这张表往回退
     let mut at: Vec<(PathBuf, PathBuf)> = Vec::with_capacity(moves.len());
 

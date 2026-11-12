@@ -95,6 +95,12 @@
         <div class="panel-head">
           <span class="panel-title" id="rule-title">整体</span>
         </div>
+        <div class="preset-bar">
+          <select id="presetList" title="已保存的规则预设"><option value="">— 当前 —</option></select>
+          <button class="btn tiny" id="presetSave">保存</button>
+          <button class="btn tiny" id="presetSaveAs">另存为…</button>
+          <button class="btn tiny" id="presetDelete" disabled>删除</button>
+        </div>
         <div class="rule-body">
           <!-- 整体 -->
           <section class="group" data-group="overall">
@@ -173,6 +179,12 @@
               <label class="opt"><input type="checkbox" id="replaceRegex" />正则表达式</label>
               <label class="opt"><input type="checkbox" id="replaceCase" />区分大小写</label>
             </div>
+            <div class="group-title">替换范围</div>
+            <div class="radio-grid">
+              <label class="opt"><input type="radio" name="replaceTarget" value="both" checked />主名和扩展名</label>
+              <label class="opt"><input type="radio" name="replaceTarget" value="name" />仅主名</label>
+              <label class="opt"><input type="radio" name="replaceTarget" value="ext" />仅扩展名</label>
+            </div>
             <div class="help">
               正则下可用 <code>$1</code> 引用捕获组，如查找 <code>^(\d+)_</code> 替换为 <code>img$1-</code>。
             </div>
@@ -243,8 +255,8 @@
             <label class="field"><span>模板</span><input type="text" id="tplText" placeholder="{name}_{num}" /></label>
             <div class="help">
               可用变量：<code>{name}</code> 已处理的主名 · <code>{ext}</code> 扩展名 · <code>{num}</code> 序号 ·
-              <code>{index}</code> 行号 · <code>{date}</code> 日期 · <code>{time}</code> 时间 ·
-              <code>{parent}</code> 所在目录名 · <code>{rand}</code> 6 位随机数
+              <code>{index}</code> 行号 · <code>{date}</code> 文件修改日期 · <code>{time}</code> 修改时间 ·
+              <code>{mtime}</code> 修改时间戳 · <code>{parent}</code> 所在目录名 · <code>{rand}</code> 6 位随机数
             </div>
           </section>
 
@@ -259,7 +271,7 @@
             <label class="chk"><input type="checkbox" id="confirmExec" checked /><span>改名前弹出确认</span></label>
             <label class="chk"><input type="checkbox" id="skipConflict" checked /><span>存在重名冲突时拒绝执行</span></label>
             <div class="help">
-              撤销栈保存在内存中，关闭程序后清空；每次执行改名都会留下一条可撤销记录。
+              撤销/重做保存在本地，关闭程序后仍可恢复；每次执行改名都会留下一条可撤销记录。
             </div>
           </section>
         </div>
@@ -309,6 +321,7 @@
         <div class="foot">
           <div class="status" id="status"></div>
           <button class="btn" id="btnUndo" disabled>撤销</button>
+          <button class="btn" id="btnRedo" disabled>重做</button>
           <button class="btn primary" id="btnExec" disabled>执行改名</button>
         </div>
       </div>
@@ -316,6 +329,21 @@
 
     <div class="drop-scrim" id="dropScrim"><div class="box">松手导入文件</div></div>
     <div class="toast" id="toast"></div>
+
+    <!-- 通用模态：另存为预设、后续所有 prompt/confirm 都走这里 -->
+    <div class="modal-scrim" id="modalScrim" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-title" id="modalTitle"></div>
+        <div class="modal-body">
+          <input class="modal-input" id="modalInput" type="text" hidden />
+          <div class="modal-text" id="modalText" hidden></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="modalCancel" hidden>取消</button>
+          <button class="btn primary" id="modalOk">确定</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="js/main.js"></script>
   </body>
