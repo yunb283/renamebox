@@ -805,6 +805,7 @@ body {
 .rule-body {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: 10px;
   overflow-y: auto;
   min-height: 0;
